@@ -21,7 +21,7 @@ function createSplash() {
     alwaysOnTop: true,
     skipTaskbar: true,
     backgroundColor: '#060913',
-    icon: path.join(__dirname, 'icon.png'),
+    icon: path.join(__dirname, 'nexus.ico'),
   })
   splashWindow.loadFile(path.join(__dirname, 'splash.html'))
   splashWindow.on('closed', () => { splashWindow = null })
@@ -428,7 +428,7 @@ function createWindow() {
     frame: false,
     titleBarStyle: 'hidden',
     show: false,
-    icon: path.join(__dirname, 'icon.png'),
+    icon: path.join(__dirname, 'nexus.ico'),
     webPreferences: {
       preload: path.join(__dirname, 'preload.cjs'),
       contextIsolation: true,

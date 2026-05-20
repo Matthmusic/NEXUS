@@ -9,7 +9,7 @@
   "build": {
     "appId": "com.matthmusic.nexus",
     "productName": "NEXUS",
-    "icon": "electron/icon.png",
+    "icon": "electron/nexus.ico",
     "directories": {
       "output": "dist",
       "buildResources": "electron"
