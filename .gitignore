@@ -1,0 +1,9 @@
+﻿node_modules
+/dist
+/release
+/data/prices.lock
+/data/admin.log
+/data/*.tmp
+/data/*.ver
+/data/backups/
+/.claude

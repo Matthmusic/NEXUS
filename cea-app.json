@@ -1,0 +1,69 @@
+{
+  "app": {
+    "id": "nexus",
+    "name": "NEXUS",
+    "version": "0.1.0",
+    "description": {
+      "short": "Base de prix par références électriques",
+      "long": "NEXUS est une application Windows de gestion d'une base de prix de composants électriques. Elle offre une recherche floue (fuzzy search) sur les références, un calculateur de coût de câbles avec export devis, et un système de verrouillage multi-utilisateur pour l'édition de la base de données."
+    }
+  },
+  "resources": {
+    "logo": {
+      "path": "electron/icon.png",
+      "url": "https://raw.githubusercontent.com/Matthmusic/NEXUS/main/electron/icon.png"
+    },
+    "screenshots": []
+  },
+  "detection": {
+    "windows": {
+      "files": [
+        {
+          "path": "%LOCALAPPDATA%\\Programs\\nexus\\NEXUS.exe",
+          "description": "Exécutable principal NEXUS"
+        }
+      ],
+      "directories": [
+        {
+          "path": "%APPDATA%\\nexus-data",
+          "description": "Dossier de données NEXUS"
+        }
+      ]
+    },
+    "priority": "files"
+  },
+  "metadata": {
+    "author": {
+      "name": "Matthieu Maurel",
+      "email": "matthieu.maurel@conception-ea.fr"
+    },
+    "category": "utilities",
+    "tags": ["électrique", "prix", "calculateur", "câbles", "base de données"],
+    "repository": {
+      "type": "github",
+      "url": "https://github.com/Matthmusic/NEXUS",
+      "branch": "main"
+    },
+    "license": "UNLICENSED"
+  },
+  "installation": {
+    "type": "installer",
+    "downloadUrl": "https://github.com/Matthmusic/NEXUS/releases/latest/download/NEXUS-0.1.0-Setup.exe",
+    "installCommand": "NEXUS-0.1.0-Setup.exe /SILENT",
+    "uninstallCommand": "uninstall.exe /SILENT"
+  },
+  "changelog": {
+    "0.1.0": {
+      "date": "2026-05-20",
+      "changes": [
+        "Version initiale",
+        "Recherche floue sur la base de prix (Fuse.js)",
+        "Calculateur de coût de câbles avec export XLSX",
+        "Système de verrouillage multi-utilisateur (admin lock)",
+        "Import Excel pour la base de prix et les prix câbles",
+        "Historique des prix par référence (10 entrées max)",
+        "Interface sans bordure avec fenêtre personnalisée"
+      ]
+    }
+  }
+}

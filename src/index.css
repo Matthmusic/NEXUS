@@ -1,0 +1,73 @@
+﻿@import url('https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600;700&family=Space+Grotesk:wght@400;600&display=swap');
+
+:root {
+  font-family: 'Sora', system-ui, -apple-system, sans-serif;
+  line-height: 1.6;
+  font-weight: 400;
+  background-color: #060913;
+  color: #e5e9f4;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+
+  /* Design tokens */
+  --accent: #f59e0b;
+  --accent-muted: rgba(245, 158, 11, 0.15);
+  --accent-glow: rgba(245, 158, 11, 0.25);
+  --surface: rgba(10, 15, 32, 0.9);
+  --surface-raised: rgba(15, 22, 42, 0.95);
+  --border: #1d2642;
+  --border-hover: #2d3a5f;
+  --text-primary: #f8fafc;
+  --text-secondary: #9aa5c1;
+  --text-muted: #4a5578;
+  --radius-sm: 10px;
+  --radius-md: 14px;
+  --radius-lg: 18px;
+  --transition-fast: 0.15s ease;
+  --transition-mid: 0.2s ease;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  background: radial-gradient(1200px at 18% 12%, rgba(111, 128, 255, 0.16), transparent 32%),
+    radial-gradient(1000px at 76% 14%, rgba(249, 150, 27, 0.18), transparent 35%),
+    #060913;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+*::-webkit-scrollbar-track {
+  background: rgba(12, 18, 36, 0.6);
+  border-radius: 10px;
+}
+
+*::-webkit-scrollbar-thumb {
+  background: #f59e0b;
+  border-radius: 10px;
+  border: 2px solid #0b1220;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background: #fbbf24;
+}
+
+body {
+  scrollbar-color: #f59e0b rgba(12, 18, 36, 0.6);
+  scrollbar-width: thin;
+}
