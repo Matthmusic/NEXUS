@@ -1,4 +1,5 @@
 ﻿const { app, BrowserWindow, ipcMain, dialog, shell, screen, Menu, globalShortcut } = require('electron')
+const { autoUpdater } = require('electron-updater')
 const fs = require('fs')
 const path = require('path')
 const os = require('os')
@@ -395,6 +396,23 @@ async function exportExcel(items) {
   return res.filePath
 }
 
+function sendToMainWindow(channel, payload) {
+  if (mainWindow && !mainWindow.isDestroyed() && mainWindow.webContents) {
+    mainWindow.webContents.send(channel, payload)
+  }
+}
+
+function wireAutoUpdater() {
+  if (isDev) return
+  autoUpdater.autoDownload = false
+  autoUpdater.autoInstallOnAppQuit = true
+  autoUpdater.on('update-available', (info) => sendToMainWindow('update-event', { type: 'available', info }))
+  autoUpdater.on('update-not-available', () => sendToMainWindow('update-event', { type: 'not-available' }))
+  autoUpdater.on('error', (err) => sendToMainWindow('update-event', { type: 'error', message: err.message }))
+  autoUpdater.on('download-progress', (progress) => sendToMainWindow('update-event', { type: 'progress', progress }))
+  autoUpdater.on('update-downloaded', (info) => sendToMainWindow('update-event', { type: 'downloaded', info }))
+}
+
 function createWindow() {
   const { width: displayW, height: displayH } = screen.getPrimaryDisplay().workAreaSize
   const targetW = Math.max(1100, Math.min(1400, Math.round(displayW * 0.9)))
@@ -479,6 +497,21 @@ ipcMain.handle('export-sheet', (_event, payload) => exportSheet(payload))
 ipcMain.handle('get-prices-version', () => getPricesVersion())
 ipcMain.handle('backup-prices', () => backupPrices())
 
+ipcMain.handle('check-updates', async () => {
+  if (isDev) return { status: 'dev' }
+  try {
+    const result = await autoUpdater.checkForUpdates()
+    if (result?.updateInfo?.version && result.updateInfo.version !== app.getVersion()) {
+      return { status: 'available', version: result.updateInfo.version }
+    }
+    return { status: 'up-to-date', version: app.getVersion() }
+  } catch (err) {
+    return { status: 'error', message: String(err) }
+  }
+})
+ipcMain.handle('download-update', async () => { if (!isDev) await autoUpdater.downloadUpdate() })
+ipcMain.handle('install-update', () => { if (!isDev) autoUpdater.quitAndInstall() })
+
 ipcMain.handle('window-close', () => {
   if (mainWindow) mainWindow.close()
 })
@@ -500,6 +533,8 @@ app.whenReady().then(() => {
   Menu.setApplicationMenu(null)
   createSplash()
   createWindow()
+  wireAutoUpdater()
+  if (!isDev) autoUpdater.checkForUpdates()
   if (isDev) {
     globalShortcut.register('Control+Shift+I', () => {
       const win = BrowserWindow.getFocusedWindow()

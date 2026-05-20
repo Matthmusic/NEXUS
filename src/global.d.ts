@@ -23,6 +23,10 @@ declare global {
       windowClose: () => Promise<void>
       windowMinimize: () => Promise<void>
       windowToggleMaximize: () => Promise<void>
+      checkUpdates: () => Promise<{ status: string; version?: string; message?: string }>
+      downloadUpdate: () => Promise<void>
+      installUpdate: () => Promise<void>
+      onUpdateEvent: (callback: (data: UpdateEventPayload) => void) => () => void
     }
   }
 
@@ -74,6 +78,13 @@ declare global {
       updatedBy?: string
     }
     items: PriceItem[]
+  }
+
+  interface UpdateEventPayload {
+    type: 'available' | 'not-available' | 'progress' | 'downloaded' | 'error'
+    info?: { version: string }
+    progress?: { percent: number }
+    message?: string
   }
 
   interface ExcelData {
