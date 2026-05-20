@@ -32,7 +32,7 @@ if (process.platform === 'win32') {
 }
 
 const DEFAULT_DATA_DIR = app.isPackaged
-  ? path.join(app.getPath('userData'), 'nexus-data')
+  ? 'Z:\\F - UTILITAIRES\\NEXUS'
   : path.join(process.cwd(), 'data')
 const CONFIG_PATH = path.join(app.getPath('userData'), 'config.json')
 
