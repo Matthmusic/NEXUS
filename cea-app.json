@@ -10,8 +10,8 @@
   },
   "resources": {
     "logo": {
-      "path": "electron/icon.png",
-      "url": "https://raw.githubusercontent.com/Matthmusic/NEXUS/main/electron/icon.png"
+      "path": "electron/nexus-logo.svg",
+      "url": "https://raw.githubusercontent.com/Matthmusic/NEXUS/main/electron/nexus-logo.svg"
     },
     "screenshots": []
   },
