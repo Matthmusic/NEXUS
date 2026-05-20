@@ -3,7 +3,7 @@
   "description": "NEXUS - base de prix par references electriques (Electron + React).",
   "author": "Matthieu Maurel",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.1.1",
   "type": "commonjs",
   "main": "electron/main.cjs",
   "build": {

@@ -2,7 +2,7 @@
   "app": {
     "id": "nexus",
     "name": "NEXUS",
-    "version": "0.1.0",
+    "version": "0.1.1",
     "description": {
       "short": "Base de prix par références électriques",
       "long": "NEXUS est une application Windows de gestion d'une base de prix de composants électriques. Elle offre une recherche floue (fuzzy search) sur les références, un calculateur de coût de câbles avec export devis, et un système de verrouillage multi-utilisateur pour l'édition de la base de données."
@@ -48,11 +48,17 @@
   },
   "installation": {
     "type": "installer",
-    "downloadUrl": "https://github.com/Matthmusic/NEXUS/releases/latest/download/NEXUS-0.1.0-Setup.exe",
-    "installCommand": "NEXUS-0.1.0-Setup.exe /SILENT",
+    "downloadUrl": "https://github.com/Matthmusic/NEXUS/releases/latest/download/NEXUS-0.1.1-Setup.exe",
+    "installCommand": "NEXUS-0.1.1-Setup.exe /SILENT",
     "uninstallCommand": "uninstall.exe /SILENT"
   },
   "changelog": {
+    "0.1.1": {
+      "date": "2026-05-20",
+      "changes": [
+        "Correction de l'icône de l'installeur et de l'application"
+      ]
+    },
     "0.1.0": {
       "date": "2026-05-20",
       "changes": [
