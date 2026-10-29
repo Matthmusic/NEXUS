@@ -2,7 +2,7 @@
   "app": {
     "id": "nexus",
     "name": "NEXUS",
-    "version": "0.1.5",
+    "version": "0.1.6",
     "description": {
       "short": "Base de prix par références électriques",
       "long": "NEXUS est une application Windows de gestion d'une base de prix de composants électriques. Elle offre une recherche floue (fuzzy search) sur les références, un calculateur de coût de câbles avec export devis, et un système de verrouillage multi-utilisateur pour l'édition de la base de données."
@@ -48,11 +48,19 @@
   },
   "installation": {
     "type": "installer",
-    "downloadUrl": "https://github.com/Matthmusic/NEXUS/releases/latest/download/NEXUS-0.1.5-Setup.exe",
-    "installCommand": "NEXUS-0.1.5-Setup.exe /SILENT",
+    "downloadUrl": "https://github.com/Matthmusic/NEXUS/releases/latest/download/NEXUS-0.1.6-Setup.exe",
+    "installCommand": "NEXUS-0.1.6-Setup.exe /SILENT",
     "uninstallCommand": "uninstall.exe /SILENT"
   },
   "changelog": {
+    "0.1.6": {
+      "date": "2026-10-29",
+      "changes": [
+        "Calculateur : temps de pose estimé par formule quand la section n'est pas dans le tableau",
+        "Calculateur : liaisons multi-câbles (ex. 4x3x1x240 + PE 240) et nombre de câbles en parallèle",
+        "Serveur MCP : mêmes calculs (estimation du temps de pose, composition de liaison)"
+      ]
+    },
     "0.1.5": {
       "date": "2026-10-29",
       "changes": [

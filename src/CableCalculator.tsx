@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { RefreshCcw, X } from 'lucide-react'
-import { CABLES, CABLE_CATS, SECTION_RE, COND_RE, normalizeSection } from './components/calc/cableData'
+import { CABLES, CABLE_CATS, SECTION_RE, COND_RE, normalizeSection, parseComposition, parseSection, resolveTpsPose } from './components/calc/cableData'
 import type { CalcSession, DevisLine } from './components/calc/types'
 import TableDesPrix from './components/calc/TableDesPrix'
 import DevisPanel from './components/calc/DevisPanel'
@@ -21,6 +21,7 @@ type PersistedCalcState = {
   corrMarge: number
   corrTaux: number
   corrQty: number
+  corrCount: number
 }
 
 function matchCalcSection(section: string): number | null {
@@ -55,6 +56,7 @@ function loadPersistedState(): PersistedCalcState {
     corrMarge: DEFAULT_MARGE,
     corrTaux: DEFAULT_TAUX,
     corrQty: DEFAULT_QTY,
+    corrCount: 1,
   }
 
   try {
@@ -69,6 +71,7 @@ function loadPersistedState(): PersistedCalcState {
       corrMarge: typeof parsed.corrMarge === 'number' ? parsed.corrMarge : fallback.corrMarge,
       corrTaux: typeof parsed.corrTaux === 'number' ? parsed.corrTaux : fallback.corrTaux,
       corrQty: typeof parsed.corrQty === 'number' ? parsed.corrQty : fallback.corrQty,
+      corrCount: typeof parsed.corrCount === 'number' && parsed.corrCount >= 1 ? parsed.corrCount : fallback.corrCount,
     }
   } catch {
     return fallback
@@ -77,6 +80,11 @@ function loadPersistedState(): PersistedCalcState {
 
 function persistCalcState(state: PersistedCalcState) {
   localStorage.setItem(STATE_KEY, JSON.stringify(state))
+}
+
+function sameSection(a: string, b: { cores: number; section: number }) {
+  const parsed = parseSection(a)
+  return parsed !== null && parsed.cores === b.cores && parsed.section === b.section
 }
 
 function sortSections(sections: string[]) {
@@ -233,6 +241,8 @@ export default function CableCalculator({ db, currentUser, isAdmin, onDbChange, 
   const [corrMarge, setCorrMarge] = useState(initialState.corrMarge)
   const [corrTaux, setCorrTaux] = useState(initialState.corrTaux)
   const [corrQty, setCorrQty] = useState(initialState.corrQty)
+  const [corrCount, setCorrCount] = useState(initialState.corrCount)
+  const [compositionInput, setCompositionInput] = useState('')
   const [devisLines, setDevisLines] = useState<DevisLine[]>([])
   const [nextId, setNextId] = useState(1)
   const [sessions, setSessions] = useState<CalcSession[]>(() => loadSessions())
@@ -276,8 +286,14 @@ export default function CableCalculator({ db, currentUser, isAdmin, onDbChange, 
 
   const corrCalcCable = corrCalcIdx !== null ? CABLES[corrCalcIdx] : null
   const corrPrixAchat = corrRef?.price ?? null
-  const corrPtMat = corrPrixAchat !== null ? corrPrixAchat * corrMarge : null
-  const corrPtPose = corrCalcCable !== null ? corrCalcCable.tps_pose * corrTaux : null
+  // Temps de pose d'un cable : tableau (ou choix manuel), sinon formule.
+  const corrTpsInfo = corrCalcCable !== null
+    ? { tps: corrCalcCable.tps_pose, estimated: false }
+    : (corrSection ? resolveTpsPose(corrSection) : null)
+  const corrTpsUnit = corrTpsInfo?.tps ?? null
+  // Valeurs par metre de liaison (x nombre de cables en parallele).
+  const corrPtMat = corrPrixAchat !== null ? corrPrixAchat * corrMarge * corrCount : null
+  const corrPtPose = corrTpsUnit !== null ? corrTpsUnit * corrTaux * corrCount : null
   const corrPrixPose = corrPtMat !== null && corrPtPose !== null ? corrPtMat + corrPtPose : null
 
   useEffect(() => {
@@ -296,8 +312,8 @@ export default function CableCalculator({ db, currentUser, isAdmin, onDbChange, 
   }, [corrRefRef, corrSection, corrType, currentSectionItems])
 
   useEffect(() => {
-    persistCalcState({ corrType, corrSection, corrRefRef, corrCalcIdx, corrMarge, corrTaux, corrQty })
-  }, [corrCalcIdx, corrMarge, corrQty, corrRefRef, corrSection, corrTaux, corrType])
+    persistCalcState({ corrType, corrSection, corrRefRef, corrCalcIdx, corrMarge, corrTaux, corrQty, corrCount })
+  }, [corrCalcIdx, corrCount, corrMarge, corrQty, corrRefRef, corrSection, corrTaux, corrType])
 
   function handleCorrTypeChange(type: string) {
     setCorrType(type)
@@ -327,22 +343,75 @@ export default function CableCalculator({ db, currentUser, isAdmin, onDbChange, 
     setCorrQty(Number.isFinite(parsed) ? Math.max(parsed, 0) : 0)
   }
 
-  function handleAddToDevis() {
-    if (corrPrixPose === null || !corrRef) return
-    setDevisLines((prev) => [...prev, {
-      id: nextId,
-      label: `${corrType} ${corrSection}`,
-      refRef: corrRef.ref,
-      prixAchat: corrPrixAchat ?? 0,
+  function handleCountInput(value: string) {
+    const parsed = Number.parseInt(value, 10)
+    setCorrCount(Number.isFinite(parsed) && parsed >= 1 ? parsed : 1)
+  }
+
+  // Ligne de devis pour `count` cables `section` du type courant (valeurs par ml de liaison).
+  function buildDevisLine(id: number, section: string, count: number, item: PriceItem, tps: number, estimated: boolean, role?: string | null): DevisLine {
+    const prefix = count > 1 ? `${count} x ` : ''
+    const suffix = [role, estimated ? 'tps pose estime' : null].filter(Boolean).join(', ')
+    return {
+      id,
+      label: `${prefix}${corrType} ${section}${suffix ? ` (${suffix})` : ''}`,
+      refRef: item.ref,
+      prixAchat: item.price * count,
       marge: corrMarge,
-      ptMat: corrPtMat ?? 0,
-      tpsPose: corrCalcCable?.tps_pose ?? 0,
+      ptMat: item.price * corrMarge * count,
+      tpsPose: tps * count,
       taux: corrTaux,
-      ptPose: corrPtPose ?? 0,
-      prixPose: corrPrixPose,
+      ptPose: tps * corrTaux * count,
+      prixPose: (item.price * corrMarge + tps * corrTaux) * count,
       qty: corrQty,
-    }])
+    }
+  }
+
+  function handleAddToDevis() {
+    if (corrPrixPose === null || !corrRef || corrTpsInfo === null) return
+    setDevisLines((prev) => [...prev, buildDevisLine(nextId, corrSection, corrCount, corrRef, corrTpsInfo.tps, corrTpsInfo.estimated)])
     setNextId((value) => value + 1)
+  }
+
+  const composition = useMemo(() => (compositionInput.trim() ? parseComposition(compositionInput) : null), [compositionInput])
+  const compositionSingle = composition !== null && composition.every((g) => g.cores === composition[0].cores && g.section === composition[0].section)
+  const compositionTotal = composition?.reduce((sum, g) => sum + g.count, 0) ?? 0
+
+  // Applique une composition (ex. "4x3x1x240 + PE 240") : une seule section -> calculateur
+  // (section + nb de cables) ; sections differentes -> une ligne de devis par groupe.
+  function handleApplyComposition() {
+    if (!composition) {
+      onToast('error', 'Composition non reconnue. Exemple : 4x3x1x240 + PE 240')
+      return
+    }
+    if (!corrType) {
+      onToast('warn', 'Choisis d\'abord le type de cable.')
+      return
+    }
+    const sectionFor = (g: { cores: number; section: number }) => sectionsForType.find((s) => sameSection(s, g)) ?? null
+    const missing = composition.filter((g) => !sectionFor(g))
+    if (missing.length) {
+      onToast('error', `Section absente pour ${corrType} : ${missing.map((g) => g.label).join(', ')}`)
+      return
+    }
+    if (compositionSingle) {
+      handleCorrSectionChange(sectionFor(composition[0])!)
+      setCorrCount(compositionTotal)
+      return
+    }
+    let id = nextId
+    const lines: DevisLine[] = []
+    for (const g of composition) {
+      const section = sectionFor(g)!
+      const item = getDefaultRef(cableTypeMap[corrType][section])
+      const tps = resolveTpsPose(section)
+      if (!item || !tps) continue
+      lines.push(buildDevisLine(id, section, g.count, item, tps.tps, tps.estimated, g.role))
+      id += 1
+    }
+    setDevisLines((prev) => [...prev, ...lines])
+    setNextId(id)
+    onToast('info', `${lines.length} lignes ajoutees au devis (${compositionTotal} cables).`)
   }
 
   async function handleExportDevis() {
@@ -367,6 +436,7 @@ export default function CableCalculator({ db, currentUser, isAdmin, onDbChange, 
       corrMarge,
       corrTaux,
       corrQty,
+      corrCount,
     }, ...sessions.filter((session) => session.name !== name)].slice(0, 10)
     setSessions(next)
     persistSessions(next)
@@ -381,6 +451,7 @@ export default function CableCalculator({ db, currentUser, isAdmin, onDbChange, 
     setCorrMarge(session.corrMarge)
     setCorrTaux(session.corrTaux)
     setCorrQty(session.corrQty)
+    setCorrCount(session.corrCount ?? 1)
     setShowSessions(false)
   }
 
@@ -440,6 +511,36 @@ export default function CableCalculator({ db, currentUser, isAdmin, onDbChange, 
           </div>
         </div>
 
+        <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 16, marginBottom: 20, alignItems: 'start' }}>
+          <div className="field">
+            <label style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', color: '#8ea1ff' }}>Composition de la liaison (optionnel)</label>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <input
+                value={compositionInput}
+                placeholder="Ex : 4x3x1x240 + PE 240"
+                onChange={(event) => setCompositionInput(event.target.value)}
+                onKeyDown={(event) => { if (event.key === 'Enter') handleApplyComposition() }}
+                disabled={!corrType}
+                style={{ flex: 1 }}
+              />
+              <button type="button" className="btn secondary" disabled={!corrType || !composition} onClick={handleApplyComposition}>
+                {composition && !compositionSingle ? 'Ajouter au devis' : 'Appliquer'}
+              </button>
+            </div>
+            {compositionInput.trim() && (
+              <span className="hint" style={{ color: composition ? undefined : '#f87171' }}>
+                {composition
+                  ? `${compositionTotal} cables : ${composition.map((g) => `${g.count} x ${g.label}${g.role ? ` (${g.role})` : ''}`).join(' + ')}`
+                  : 'Non reconnu'}
+              </span>
+            )}
+          </div>
+          <div className="field">
+            <label style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', color: '#8ea1ff' }}>Cables en parallele</label>
+            <input type="number" value={corrCount} min={1} step={1} onChange={(event) => handleCountInput(event.target.value)} />
+          </div>
+        </div>
+
         {corrSection && (
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1.4fr', gap: 16, alignItems: 'stretch' }}>
 
@@ -449,7 +550,7 @@ export default function CableCalculator({ db, currentUser, isAdmin, onDbChange, 
               <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <span style={{ color: '#9aa5c1', fontSize: 13 }}>Prix achat</span>
-                  <span style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 600, color: '#f8fafc' }}>{corrPrixAchat !== null ? `${corrPrixAchat.toFixed(4)} EUR/ml` : '-'}</span>
+                  <span style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 600, color: '#f8fafc' }}>{corrPrixAchat !== null ? `${corrPrixAchat.toFixed(4)} EUR/ml${corrCount > 1 ? ` x ${corrCount}` : ''}` : '-'}</span>
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <span style={{ color: '#9aa5c1', fontSize: 13 }}>Coefficient marge</span>
@@ -470,7 +571,9 @@ export default function CableCalculator({ db, currentUser, isAdmin, onDbChange, 
                   <span style={{ fontSize: 11, color: '#34d399', background: 'rgba(5,100,60,0.2)', padding: '2px 7px', borderRadius: 5, border: '1px solid rgba(52,211,153,0.3)' }}>Match: {corrCalcCable.designation}</span>
                 ) : (
                   <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                    <span style={{ fontSize: 11, color: '#f87171' }}>Aucun match</span>
+                    {corrTpsInfo?.estimated
+                      ? <span style={{ fontSize: 11, whiteSpace: 'nowrap', color: '#fbbf24', background: 'rgba(245,158,11,0.12)', padding: '2px 7px', borderRadius: 5, border: '1px solid rgba(245,158,11,0.3)' }} title="0,009 + 0,0129 x racine(conducteurs x section) + 0,0055 x conducteurs, min 0,06">Estime (formule)</span>
+                      : <span style={{ fontSize: 11, color: '#f87171' }}>Aucun match</span>}
                     <select value={corrCalcIdx ?? ''} onChange={(event) => setCorrCalcIdx(event.target.value === '' ? null : Number.parseInt(event.target.value, 10))} style={{ fontSize: 11, background: 'rgba(12,18,36,0.8)', border: '1px solid #263255', borderRadius: 6, padding: '2px 6px', color: '#f8fafc', outline: 'none' }}>
                       <option value="">- selectionner -</option>
                       {CABLES.map((cable, index) => <option key={cable.row ?? index} value={index}>{cable.designation}</option>)}
@@ -481,7 +584,11 @@ export default function CableCalculator({ db, currentUser, isAdmin, onDbChange, 
               <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <span style={{ color: '#9aa5c1', fontSize: 13 }}>Temps de pose</span>
-                  <span style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 600, color: '#f8fafc' }}>{corrCalcCable ? `${corrCalcCable.tps_pose.toFixed(3)} h/ml` : '-'}</span>
+                  <span style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 600, color: corrTpsInfo?.estimated ? '#fbbf24' : '#f8fafc' }}>
+                    {corrTpsUnit !== null
+                      ? (corrCount > 1 ? `${corrTpsUnit.toFixed(3)} x ${corrCount} = ${(corrTpsUnit * corrCount).toFixed(3)} h/ml` : `${corrTpsUnit.toFixed(3)} h/ml`)
+                      : '-'}
+                  </span>
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <span style={{ color: '#9aa5c1', fontSize: 13 }}>Taux horaire</span>
