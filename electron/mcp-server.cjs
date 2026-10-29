@@ -12,7 +12,7 @@
  *
  * Variables d'environnement :
  *   NEXUS_DATA_DIR         Dossier de donnees (sinon lu depuis config.json de l'app)
- *   NEXUS_MCP_ALLOW_WRITE  "1" pour activer l'outil de modification de prix
+ *   NEXUS_MCP_ALLOW_WRITE  "0" pour desactiver les outils d'ecriture (actives par defaut)
  *   NEXUS_MCP_USER         Nom inscrit dans l'historique / le verrou (defaut : "MCP")
  *
  * Important : stdout est reserve au protocole MCP, les logs vont sur stderr.
@@ -28,8 +28,11 @@ const { z } = require('zod')
 const Fuse = FuseModule.default || FuseModule
 const pkg = require('../package.json')
 
-const ALLOW_WRITE = process.env.NEXUS_MCP_ALLOW_WRITE === '1'
-const MCP_USER = (process.env.NEXUS_MCP_USER || 'MCP').trim() || 'MCP'
+const ALLOW_WRITE = process.env.NEXUS_MCP_ALLOW_WRITE !== '0'
+function defaultMcpUser() {
+  try { return `${os.userInfo().username} (Claude)` } catch { return 'MCP' }
+}
+const MCP_USER = (process.env.NEXUS_MCP_USER || '').trim() || defaultMcpUser()
 
 function log(...args) {
   console.error('[NEXUS-MCP]', ...args)
