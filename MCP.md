@@ -23,7 +23,7 @@ NEXUS inclut un serveur MCP (`electron/mcp-server.cjs`) qui donne à Claude (Cla
 Rien à faire : au lancement, NEXUS s'inscrit tout seul dans la config de Claude Desktop (`%APPDATA%\Claude\claude_desktop_config.json`, ou la version Microsoft Store). Il suffit ensuite de **redémarrer Claude Desktop** une fois.
 
 - Seule l'entrée `nexus` est ajoutée ou mise à jour ; les autres serveurs MCP et réglages restent intacts, et une copie `.bak` est faite avant toute modification.
-- Les variables ajoutées à la main dans `env` (ex. `NEXUS_MCP_ALLOW_WRITE`) sont conservées.
+- Les variables ajoutées à la main dans `env` (ex. `NEXUS_MCP_USER`) sont conservées.
 - Si Claude Desktop n'est pas installé, rien n'est fait.
 - Pour désactiver : ajouter `"mcpAutoRegister": false` dans `%APPDATA%\nexus\config.json`.
 
@@ -73,12 +73,14 @@ Par ordre de priorité :
 2. `dataDir` du `config.json` de l'app (`%APPDATA%\nexus\config.json`) — donc le même dossier que NEXUS
 3. Par défaut `Z:\F - UTILITAIRES\NEXUS`
 
-## Écriture (désactivée par défaut)
+## Écriture (activée par défaut depuis 0.1.5)
 
-Pour autoriser Claude à modifier ou intégrer des prix, ajouter dans `env` :
+Claude peut ajouter, modifier et supprimer des références sur tous les postes. L'auteur enregistré est le nom de session Windows suivi de « (Claude) », par exemple `matthieu.maurel (Claude)`.
+
+Pour changer le nom ou désactiver l'écriture sur un poste, ajouter dans `env` de l'entrée `nexus` :
 
 ```json
-"env": { "NEXUS_MCP_ALLOW_WRITE": "1", "NEXUS_MCP_USER": "Matthieu (Claude)" }
+"env": { "NEXUS_MCP_USER": "Matthieu (Claude)", "NEXUS_MCP_ALLOW_WRITE": "0" }
 ```
 
 Exemple : « voici le tarif Schneider 2027 (fichier joint), intègre-le dans NEXUS ». Claude lit le fichier, appelle `nexus_upsert_items` en simulation pour montrer ce qui sera ajouté ou modifié, puis écrit après ton accord. Pour une référence existante, seuls les champs fournis changent ; une nouvelle référence doit avoir au moins un libellé et un prix.
