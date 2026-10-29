@@ -751,7 +751,25 @@ server.registerResource('nexus-database-info', 'nexus://info', {
   return { contents: [{ uri: uri.href, mimeType: 'application/json', text: JSON.stringify({ file, meta: db.meta, itemCount: db.items.length }, null, 2) }] }
 })
 
+// Pendant une mise a jour de NEXUS, l'installeur (electron/installer.nsh) et l'app
+// posent ce fichier : le serveur s'arrete et refuse de redemarrer, sinon NEXUS.exe
+// reste ouvert et l'installation echoue. Ignore au-dela de 10 min (install ratee).
+const MCP_PAUSE_FILE = path.join(process.env.LOCALAPPDATA || os.tmpdir(), 'nexus-mcp-pause')
+function updatePending() {
+  try { return Date.now() - fs.statSync(MCP_PAUSE_FILE).mtimeMs < 10 * 60 * 1000 } catch { return false }
+}
+
 async function main() {
+  if (updatePending()) {
+    log('mise a jour de NEXUS en cours : serveur arrete, redemarrer Claude Desktop apres la mise a jour')
+    process.exit(0)
+  }
+  setInterval(() => {
+    if (updatePending()) {
+      log('mise a jour de NEXUS detectee : arret du serveur')
+      process.exit(0)
+    }
+  }, 1000).unref()
   await server.connect(new StdioServerTransport())
   log(`v${pkg.version} pret — donnees : ${paths.dir} — ecriture : ${ALLOW_WRITE ? 'activee' : 'desactivee'}`)
 }

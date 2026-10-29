@@ -25,6 +25,7 @@ Rien à faire : au lancement, NEXUS s'inscrit tout seul dans la config de Claude
 - Seule l'entrée `nexus` est ajoutée ou mise à jour ; les autres serveurs MCP et réglages restent intacts, et une copie `.bak` est faite avant toute modification.
 - Les variables ajoutées à la main dans `env` (ex. `NEXUS_MCP_USER`) sont conservées.
 - Si Claude Desktop n'est pas installé, rien n'est fait.
+- Pendant une mise à jour de NEXUS, le serveur MCP s'arrête tout seul pour laisser l'installeur remplacer les fichiers. Redémarrer Claude Desktop après la mise à jour pour le relancer.
 - Pour désactiver : ajouter `"mcpAutoRegister": false` dans `%APPDATA%\nexus\config.json`.
 
 ### Manuel — avec NEXUS installé (pas besoin de Node)

@@ -410,7 +410,10 @@ function wireAutoUpdater() {
   autoUpdater.on('update-not-available', () => sendToMainWindow('update-event', { type: 'not-available' }))
   autoUpdater.on('error', (err) => sendToMainWindow('update-event', { type: 'error', message: err.message }))
   autoUpdater.on('download-progress', (progress) => sendToMainWindow('update-event', { type: 'progress', progress }))
-  autoUpdater.on('update-downloaded', (info) => sendToMainWindow('update-event', { type: 'downloaded', info }))
+  autoUpdater.on('update-downloaded', (info) => {
+    updateDownloaded = true
+    sendToMainWindow('update-event', { type: 'downloaded', info })
+  })
 }
 
 function createWindow() {
@@ -510,7 +513,11 @@ ipcMain.handle('check-updates', async () => {
   }
 })
 ipcMain.handle('download-update', async () => { if (!isDev) await autoUpdater.downloadUpdate() })
-ipcMain.handle('install-update', () => { if (!isDev) autoUpdater.quitAndInstall() })
+ipcMain.handle('install-update', () => {
+  if (isDev) return
+  pauseMcpForUpdate()
+  autoUpdater.quitAndInstall()
+})
 
 ipcMain.handle('window-close', () => {
   if (mainWindow) mainWindow.close()
@@ -549,6 +556,20 @@ function claudeDesktopConfigDirs() {
   return dirs.filter((dir) => fs.existsSync(dir))
 }
 
+// Fichier « pause » du serveur MCP (voir electron/installer.nsh) : tant qu'il existe,
+// le serveur MCP lance par Claude Desktop s'arrete, pour que l'installeur puisse
+// remplacer NEXUS.exe.
+const MCP_PAUSE_FILE = path.join(process.env.LOCALAPPDATA || os.tmpdir(), 'nexus-mcp-pause')
+let updateDownloaded = false
+
+function pauseMcpForUpdate() {
+  try { fs.writeFileSync(MCP_PAUSE_FILE, 'update') } catch { /* non bloquant */ }
+}
+
+function clearMcpPause() {
+  try { fs.unlinkSync(MCP_PAUSE_FILE) } catch { /* absent */ }
+}
+
 function registerClaudeMcp() {
   if (!app.isPackaged || process.platform !== 'win32') return
   if (loadConfig().mcpAutoRegister === false) return
@@ -582,6 +603,8 @@ app.whenReady().then(() => {
   createSplash()
   createWindow()
   wireAutoUpdater()
+  // L'app tourne : une eventuelle mise a jour est terminee, le MCP peut redemarrer.
+  if (app.isPackaged) clearMcpPause()
   registerClaudeMcp()
   if (!isDev) autoUpdater.checkForUpdates()
   if (isDev) {
@@ -609,4 +632,6 @@ app.on('window-all-closed', () => {
 
 app.on('will-quit', () => {
   globalShortcut.unregisterAll()
+  // autoInstallOnAppQuit : la mise a jour telechargee s'installe a la fermeture
+  if (updateDownloaded && !isDev) pauseMcpForUpdate()
 })
