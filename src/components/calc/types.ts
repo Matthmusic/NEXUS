@@ -31,6 +31,7 @@ export interface CalcSession {
   corrMarge: number
   corrTaux: number
   corrQty: number
+  corrCount?: number
 }
 
 export type Overrides = Record<number, { marge?: number; taux?: number }>

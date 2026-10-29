@@ -242,6 +242,58 @@ function normalizeSection(s) {
   return String(s || '').toLowerCase().replace(',', '.').replace(/\s/g, '')
 }
 
+// Temps de pose : tableau si la section y est, sinon formule (cf. cableData.ts).
+const TPS_POSE_MIN = 0.06
+function estimateTpsPose(cores, section) {
+  const raw = 0.009 + 0.0129 * Math.sqrt(cores * section) + 0.0055 * cores
+  return Math.max(TPS_POSE_MIN, Math.round(raw * 100) / 100)
+}
+
+function parseSection(text) {
+  const m = String(text || '').replace(/\s/g, '').match(/^(\d+)[gGxXjJ](\d+(?:[.,]\d+)?)$/)
+  if (!m) return null
+  const cores = Number.parseInt(m[1], 10)
+  const section = Number.parseFloat(m[2].replace(',', '.'))
+  return cores > 0 && section > 0 ? { cores, section } : null
+}
+
+function resolveTpsPose(sectionText) {
+  const parsed = parseSection(sectionText)
+  if (!parsed) return null
+  const spec = loadCableSpecs().find((c) => {
+    const p = parseSection(c.designation)
+    return p && p.cores === parsed.cores && p.section === parsed.section
+  })
+  if (spec) return { tps: spec.tps_pose, estimated: false }
+  return { tps: estimateTpsPose(parsed.cores, parsed.section), estimated: true }
+}
+
+// "4x3x1x240 + PE 240" -> [{count:12,cores:1,section:240},{count:1,cores:1,section:240,role:'PE'}]
+function parseComposition(text) {
+  const terms = String(text || '').split('+').map((t) => t.trim()).filter(Boolean)
+  if (!terms.length) return null
+  const groups = []
+  for (const term of terms) {
+    const roleMatch = term.match(/\b(PE|PEN|N|T|TERRE)\b/i)
+    const role = roleMatch ? roleMatch[1].toUpperCase() : null
+    const body = term.replace(/\b(PE|PEN|N|T|TERRE)\b/gi, '').replace(/mm2|mm²|²|mm|[()]/gi, '').replace(/\s/g, '')
+    if (!body) return null
+    const parts = body.split(/[xXgGjJ*×]/)
+    if (parts.some((p) => !/^\d+(?:[.,]\d+)?$/.test(p))) return null
+    const nums = parts.map((p) => Number.parseFloat(p.replace(',', '.')))
+    let count = 1
+    let cores = 1
+    const section = nums[nums.length - 1]
+    if (nums.length >= 2) {
+      cores = nums[nums.length - 2]
+      count = nums.slice(0, -2).reduce((acc, v) => acc * v, 1)
+    }
+    if (!Number.isInteger(cores) || !Number.isInteger(count) || cores < 1 || count < 1 || !(section > 0)) return null
+    groups.push({ count, cores, section, role })
+  }
+  return groups
+}
+
 function buildCableTypeMap() {
   const { db } = loadDb()
   const map = {}
@@ -534,60 +586,100 @@ server.registerTool('nexus_cable_types', {
 }))
 
 server.registerTool('nexus_cable_price', {
-  title: 'Chiffrer un cable',
-  description: 'Calcule le prix pose d\'un cable au metre lineaire, comme le Calculateur de NEXUS : '
+  title: 'Chiffrer un cable ou une liaison',
+  description: 'Calcule le prix pose au metre lineaire, comme le Calculateur de NEXUS : '
     + 'PT materiel = prix achat x marge ; PT pose = temps de pose (h/ml) x taux horaire ; prix pose = somme. '
-    + 'Renvoie aussi le total pour la quantite demandee.',
+    + 'Temps de pose : valeur du tableau NEXUS, sinon estimation par formule (0,009 + 0,0129 x racine(conducteurs x section) + 0,0055 x conducteurs, min 0,06 h/ml), signalee par tpsPoseEstime=true. '
+    + 'Pour une liaison de plusieurs cables (ex. "4x3x1x240 + PE 240" = 13 x 1x240), utiliser composition au lieu de section : '
+    + 'chaque groupe est chiffre puis multiplie par son nombre de cables. Renvoie aussi le total pour la quantite demandee.',
   inputSchema: {
     type: z.string().describe('Type de cable, ex. "U1000 R2V" (voir nexus_cable_types)'),
-    section: z.string().describe('Section, ex. "3G2,5" ou "5G16"'),
-    ref: z.string().optional().describe('Reference precise (sinon la premiere hors conditionnement TGL/T500/...)'),
+    section: z.string().optional().describe('Section d\'un cable, ex. "3G2,5" ou "5G16"'),
+    composition: z.string().optional().describe('Liaison multi-cables, ex. "4x3x1x240 + PE 240" ou "3x1x150 + 1x95 N"'),
+    count: z.number().int().min(1).optional().describe('Nombre de cables identiques en parallele (defaut 1, ignore avec composition)'),
+    ref: z.string().optional().describe('Reference precise (section seule ; sinon la premiere hors conditionnement TGL/T500/...)'),
     marge: z.number().positive().optional().describe(`Coefficient de marge (defaut ${DEFAULT_MARGE})`),
     taux: z.number().nonnegative().optional().describe(`Taux horaire de pose EUR/h (defaut ${DEFAULT_TAUX})`),
-    qty: z.number().nonnegative().optional().describe('Quantite en metres (defaut 1)'),
+    qty: z.number().nonnegative().optional().describe('Longueur de la liaison en metres (defaut 1)'),
   },
   annotations: { readOnlyHint: true },
-}, safe(({ type, section, ref, marge, taux, qty }) => {
+}, safe(({ type, section, composition, count, ref, marge, taux, qty }) => {
   const map = buildCableTypeMap()
   const typeKey = findMapKey(map, type)
   if (!typeKey) return fail(`Type inconnu : ${type}. Voir nexus_cable_types.`)
-  const sectionKey = findMapKey(map[typeKey], section)
-  if (!sectionKey) return fail(`Section ${section} absente pour ${typeKey}. Sections : ${Object.keys(map[typeKey]).join(', ')}`)
+  if (!section && !composition) return fail('Indiquer section ou composition.')
 
-  const items = map[typeKey][sectionKey]
-  let item
-  if (ref) {
-    item = items.find((i) => i.ref.toLowerCase() === ref.trim().toLowerCase())
-    if (!item) return fail(`Reference ${ref} absente pour ${typeKey} ${sectionKey}. Refs : ${items.map((i) => i.ref).join(', ')}`)
-  } else {
-    item = items.find((i) => !COND_RE.test(i.name)) || items[0]
-  }
-
-  const spec = loadCableSpecs().find((c) => normalizeSection(c.designation) === normalizeSection(sectionKey)) || null
   const m = marge ?? DEFAULT_MARGE
   const t = taux ?? DEFAULT_TAUX
   const q = qty ?? 1
-  const ptMat = item.price * m
-  const ptPose = spec ? spec.tps_pose * t : null
-  const prixPose = ptPose !== null ? ptMat + ptPose : null
-  const round = (v) => (v === null ? null : Math.round(v * 10000) / 10000)
+  const round = (v) => Math.round(v * 10000) / 10000
+  const sectionKeyFor = (cores, sec) => Object.keys(map[typeKey]).find((k) => {
+    const p = parseSection(k)
+    return p && p.cores === cores && p.section === sec
+  }) || null
 
+  const priceGroup = (sectionKey, n, wantedRef, role) => {
+    const items = map[typeKey][sectionKey]
+    let item
+    if (wantedRef) {
+      item = items.find((i) => i.ref.toLowerCase() === wantedRef.trim().toLowerCase())
+      if (!item) throw new Error(`Reference ${wantedRef} absente pour ${typeKey} ${sectionKey}. Refs : ${items.map((i) => i.ref).join(', ')}`)
+    } else {
+      item = items.find((i) => !COND_RE.test(i.name)) || items[0]
+    }
+    const tps = resolveTpsPose(sectionKey)
+    const ptMat = item.price * m
+    const ptPose = tps ? tps.tps * t : null
+    const prixPose = ptPose !== null ? ptMat + ptPose : null
+    return {
+      section: sectionKey,
+      role: role || undefined,
+      nbCables: n,
+      ref: item.ref,
+      name: item.name,
+      prixAchat_eur_ml: item.price,
+      ptMateriel_eur_ml: round(ptMat),
+      tpsPose_h_ml: tps ? tps.tps : null,
+      tpsPoseEstime: tps ? tps.estimated : undefined,
+      ptPose_eur_ml: ptPose !== null ? round(ptPose) : null,
+      prixPose_eur_ml: prixPose !== null ? round(prixPose) : null,
+      prixPoseLiaison_eur_ml: prixPose !== null ? round(prixPose * n) : null,
+      tpsPoseLiaison_h_ml: tps ? round(tps.tps * n) : null,
+      alternatives: wantedRef ? undefined : items.filter((i) => i !== item).map((i) => ({ ref: i.ref, name: i.name, price: i.price })),
+    }
+  }
+
+  let groups
+  if (composition) {
+    const parsed = parseComposition(composition)
+    if (!parsed) return fail(`Composition non reconnue : ${composition}. Exemple : "4x3x1x240 + PE 240".`)
+    const missing = parsed.filter((g) => !sectionKeyFor(g.cores, g.section))
+    if (missing.length) {
+      return fail(`Sections absentes pour ${typeKey} : ${missing.map((g) => `${g.cores}x${g.section}`).join(', ')}. Sections : ${Object.keys(map[typeKey]).join(', ')}`)
+    }
+    groups = parsed.map((g) => priceGroup(sectionKeyFor(g.cores, g.section), g.count, null, g.role))
+  } else {
+    const sectionKey = findMapKey(map[typeKey], section)
+    if (!sectionKey) return fail(`Section ${section} absente pour ${typeKey}. Sections : ${Object.keys(map[typeKey]).join(', ')}`)
+    groups = [priceGroup(sectionKey, count ?? 1, ref, null)]
+  }
+
+  const complete = groups.every((g) => g.prixPoseLiaison_eur_ml !== null)
+  const perMl = groups.reduce((sum, g) => sum + (g.prixPoseLiaison_eur_ml ?? g.ptMateriel_eur_ml * g.nbCables), 0)
+  const tpsMl = groups.reduce((sum, g) => sum + (g.tpsPoseLiaison_h_ml ?? 0), 0)
   return ok({
     type: typeKey,
-    section: sectionKey,
-    ref: item.ref,
-    name: item.name,
-    prixAchat_eur_ml: item.price,
+    composition: composition || undefined,
     marge: m,
-    ptMateriel_eur_ml: round(ptMat),
-    tpsPose_h_ml: spec ? spec.tps_pose : null,
     taux_eur_h: t,
-    ptPose_eur_ml: round(ptPose),
-    prixPose_eur_ml: round(prixPose),
+    nbCables: groups.reduce((sum, g) => sum + g.nbCables, 0),
+    groupes: groups,
+    tpsPoseLiaison_h_ml: round(tpsMl),
+    prixPoseLiaison_eur_ml: round(perMl),
     qty_m: q,
-    total_eur: prixPose !== null ? round(prixPose * q) : null,
-    note: spec ? undefined : 'Temps de pose inconnu pour cette section (absente de cables.json) : seul le materiel est chiffre.',
-    alternatives: items.filter((i) => i !== item).map((i) => ({ ref: i.ref, name: i.name, price: i.price })),
+    total_eur: round(perMl * q),
+    heuresPose_total: round(tpsMl * q),
+    note: complete ? undefined : 'Temps de pose inconnu pour une section : seul le materiel est chiffre pour celle-ci.',
   })
 }))
 

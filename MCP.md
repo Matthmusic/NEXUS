@@ -11,7 +11,7 @@ NEXUS inclut un serveur MCP (`electron/mcp-server.cjs`) qui donne à Claude (Cla
 | `nexus_get_items` | Prix de plusieurs références d'un coup (chiffrage d'une liste) |
 | `nexus_overview` | Infos base : nb d'articles, catégories, fournisseurs, verrou admin en cours |
 | `nexus_cable_types` | Types de câbles et sections disponibles (comme le Calculateur) |
-| `nexus_cable_price` | Prix posé d'un câble : achat × marge + temps de pose × taux, total pour une quantité |
+| `nexus_cable_price` | Prix posé d'un câble ou d'une liaison multi-câbles (ex. `4x3x1x240 + PE 240`) : achat × marge + temps de pose × taux, total pour une longueur. Temps de pose estimé par formule si la section n'est pas dans le tableau |
 | `nexus_update_price` | *(optionnel)* Modifie le prix d'une référence — voir « Écriture » plus bas |
 | `nexus_upsert_items` | *(optionnel)* Intègre des prix en masse : ajoute les nouvelles références, met à jour les existantes, avec mode simulation (`dryRun`) |
 | `nexus_delete_items` | *(optionnel)* Supprime des références (50 max par appel), avec mode simulation (`dryRun`) |
