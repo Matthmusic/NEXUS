@@ -12,7 +12,8 @@ NEXUS inclut un serveur MCP (`electron/mcp-server.cjs`) qui donne à Claude (Cla
 | `nexus_overview` | Infos base : nb d'articles, catégories, fournisseurs, verrou admin en cours |
 | `nexus_cable_types` | Types de câbles et sections disponibles (comme le Calculateur) |
 | `nexus_cable_price` | Prix posé d'un câble : achat × marge + temps de pose × taux, total pour une quantité |
-| `nexus_update_price` | *(optionnel)* Modifie un prix — voir « Écriture » plus bas |
+| `nexus_update_price` | *(optionnel)* Modifie le prix d'une référence — voir « Écriture » plus bas |
+| `nexus_upsert_items` | *(optionnel)* Intègre des prix en masse : ajoute les nouvelles références, met à jour les existantes, avec mode simulation (`dryRun`) |
 
 ## Branchement dans Claude Desktop
 
@@ -68,13 +69,15 @@ Par ordre de priorité :
 
 ## Écriture (désactivée par défaut)
 
-Pour autoriser Claude à modifier des prix, ajouter dans `env` :
+Pour autoriser Claude à modifier ou intégrer des prix, ajouter dans `env` :
 
 ```json
 "env": { "NEXUS_MCP_ALLOW_WRITE": "1", "NEXUS_MCP_USER": "Matthieu (Claude)" }
 ```
 
-Chaque modification :
+Exemple : « voici le tarif Schneider 2027 (fichier joint), intègre-le dans NEXUS ». Claude lit le fichier, appelle `nexus_upsert_items` en simulation pour montrer ce qui sera ajouté ou modifié, puis écrit après ton accord. Pour une référence existante, seuls les champs fournis changent ; une nouvelle référence doit avoir au moins un libellé et un prix.
+
+Chaque écriture :
 - prend le verrou admin le temps de l'écriture et **échoue si quelqu'un est admin dans NEXUS** ;
 - crée une sauvegarde dans `backups/` ;
 - ajoute l'ancien prix à l'historique, avec `NEXUS_MCP_USER` comme auteur ;

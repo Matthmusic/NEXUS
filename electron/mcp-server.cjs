@@ -299,35 +299,95 @@ function releaseLock() {
   }
 }
 
-function updatePrice(ref, price) {
+// Prend le verrou, sauvegarde, applique `mutate(db, now)` puis ecrit de facon atomique.
+function writeDb(mutate) {
   acquireLock()
   try {
     const db = readJsonSafe(paths.prices, null)
     if (!db || !Array.isArray(db.items)) throw new Error('Base illisible')
-    const idx = db.items.findIndex((item) => String(item.ref).toLowerCase() === String(ref).trim().toLowerCase())
-    if (idx < 0) throw new Error(`Reference introuvable : ${ref}`)
+    const now = new Date().toISOString()
+    const result = mutate(db, now)
 
-    // Sauvegarde avant ecriture
     if (!fs.existsSync(paths.backups)) fs.mkdirSync(paths.backups, { recursive: true })
-    const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)
+    const stamp = now.replace(/[:.]/g, '-').slice(0, 19)
     fs.copyFileSync(paths.prices, path.join(paths.backups, `prices-${stamp}.json`))
 
-    const now = new Date().toISOString()
-    const prev = db.items[idx]
-    const history = prev.price !== price
-      ? [{ price: prev.price, updatedAt: prev.updatedAt || now, updatedBy: prev.updatedBy || 'inconnu' }, ...(prev.history || [])].slice(0, 10)
-      : (prev.history || [])
-    db.items[idx] = { ...prev, price, updatedAt: now, updatedBy: MCP_USER, history }
     db.meta = { ...db.meta, updatedAt: now, updatedBy: MCP_USER }
-
     const tmp = `${paths.prices}.tmp`
     fs.writeFileSync(tmp, JSON.stringify(db, null, 2))
     fs.renameSync(tmp, paths.prices)
     try { fs.writeFileSync(paths.version, now) } catch { /* non bloquant */ }
-    return { before: prev.price, after: price, item: db.items[idx] }
+    return result
   } finally {
     releaseLock()
   }
+}
+
+function withHistory(prev, nextPrice, now) {
+  if (prev.price === nextPrice) return prev.history || []
+  return [{ price: prev.price, updatedAt: prev.updatedAt || now, updatedBy: prev.updatedBy || 'inconnu' }, ...(prev.history || [])].slice(0, 10)
+}
+
+function findIndexByRef(items, ref) {
+  const target = String(ref).trim().toLowerCase()
+  return items.findIndex((item) => String(item.ref).toLowerCase() === target)
+}
+
+function updatePrice(ref, price) {
+  return writeDb((db, now) => {
+    const idx = findIndexByRef(db.items, ref)
+    if (idx < 0) throw new Error(`Reference introuvable : ${ref}`)
+    const prev = db.items[idx]
+    db.items[idx] = { ...prev, price, updatedAt: now, updatedBy: MCP_USER, history: withHistory(prev, price, now) }
+    return { before: prev.price, after: price, item: db.items[idx] }
+  })
+}
+
+// Ajoute les nouvelles references et met a jour les existantes (champs fournis seulement).
+// Meme normalisation que handleSave dans src/App.tsx.
+function planUpsert(items, entries, now) {
+  const report = { added: [], updated: [], unchanged: [] }
+  const next = [...items]
+  for (const entry of entries) {
+    const ref = entry.ref.trim()
+    const idx = findIndexByRef(next, ref)
+    const clean = {}
+    for (const key of ['name', 'unit', 'category', 'supplier']) {
+      if (entry[key] !== undefined) clean[key] = String(entry[key]).trim()
+    }
+    if (entry.price !== undefined) clean.price = entry.price
+    if (entry.keywords !== undefined) clean.keywords = entry.keywords.map((k) => k.trim()).filter(Boolean)
+
+    if (idx < 0) {
+      if (!clean.name) throw new Error(`Libelle (name) requis pour la nouvelle reference ${ref}`)
+      if (clean.price === undefined) throw new Error(`Prix requis pour la nouvelle reference ${ref}`)
+      const item = { ref, name: clean.name, unit: clean.unit || '', price: clean.price, category: clean.category || '',
+        supplier: clean.supplier || '', keywords: clean.keywords || [], updatedAt: now, updatedBy: MCP_USER, history: [] }
+      next.unshift(item)
+      report.added.push({ ref, name: item.name, price: item.price })
+      continue
+    }
+
+    const prev = next[idx]
+    const changed = Object.keys(clean).filter((k) => JSON.stringify(prev[k] ?? '') !== JSON.stringify(clean[k]))
+    if (changed.length === 0) { report.unchanged.push(prev.ref); continue }
+    const price = clean.price ?? prev.price
+    next[idx] = { ...prev, ...clean, price, updatedAt: now, updatedBy: MCP_USER, history: withHistory(prev, price, now) }
+    report.updated.push({ ref: prev.ref, name: next[idx].name, changed, ...(changed.includes('price') ? { before: prev.price, after: price } : {}) })
+  }
+  return { next, report }
+}
+
+function upsertItems(entries, dryRun) {
+  if (dryRun) {
+    const { db } = loadDb()
+    return { dryRun: true, ...planUpsert(db.items, entries, new Date().toISOString()).report }
+  }
+  return writeDb((db, now) => {
+    const { next, report } = planUpsert(db.items, entries, now)
+    db.items = next
+    return { dryRun: false, ...report }
+  })
 }
 
 // ---------------------------------------------------------------------------
@@ -515,6 +575,35 @@ if (ALLOW_WRITE) {
   }, safe(({ ref, price }) => {
     const res = updatePrice(ref, price)
     return ok({ ref: res.item.ref, name: res.item.name, before: res.before, after: res.after })
+  }))
+  server.registerTool('nexus_upsert_items', {
+    title: 'Integrer des prix',
+    description: 'Ajoute de nouvelles references et/ou met a jour des references existantes en une seule fois (ex. integration d\'un tarif fournisseur). '
+      + 'Pour une reference existante, seuls les champs fournis sont modifies ; pour une nouvelle, name et price sont obligatoires. '
+      + 'Utiliser dryRun=true d\'abord pour montrer a l\'utilisateur ce qui sera ajoute/modifie, puis relancer avec dryRun=false apres son accord. '
+      + `Prend le verrou admin le temps de l'ecriture, sauvegarde la base, alimente l'historique des prix. Auteur : "${MCP_USER}".`,
+    inputSchema: {
+      items: z.array(z.object({
+        ref: z.string().min(1).describe('Reference'),
+        name: z.string().optional().describe('Libelle (obligatoire si nouvelle reference)'),
+        price: z.number().nonnegative().optional().describe('Prix HT en EUR (obligatoire si nouvelle reference)'),
+        unit: z.string().optional().describe('Unite, ex. "u", "m"'),
+        category: z.string().optional(),
+        supplier: z.string().optional(),
+        keywords: z.array(z.string()).optional(),
+      })).min(1).max(5000),
+      dryRun: z.boolean().optional().describe('true = simulation sans ecrire (defaut false)'),
+    },
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true },
+  }, safe(({ items, dryRun }) => {
+    const res = upsertItems(items, !!dryRun)
+    return ok({
+      dryRun: res.dryRun,
+      counts: { added: res.added.length, updated: res.updated.length, unchanged: res.unchanged.length },
+      added: res.added.slice(0, 100),
+      updated: res.updated.slice(0, 100),
+      unchanged: res.unchanged.slice(0, 100),
+    })
   }))
 }
 
