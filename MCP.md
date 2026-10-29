@@ -14,6 +14,7 @@ NEXUS inclut un serveur MCP (`electron/mcp-server.cjs`) qui donne à Claude (Cla
 | `nexus_cable_price` | Prix posé d'un câble : achat × marge + temps de pose × taux, total pour une quantité |
 | `nexus_update_price` | *(optionnel)* Modifie le prix d'une référence — voir « Écriture » plus bas |
 | `nexus_upsert_items` | *(optionnel)* Intègre des prix en masse : ajoute les nouvelles références, met à jour les existantes, avec mode simulation (`dryRun`) |
+| `nexus_delete_items` | *(optionnel)* Supprime des références (50 max par appel), avec mode simulation (`dryRun`) |
 
 ## Branchement dans Claude Desktop
 
@@ -81,6 +82,8 @@ Pour autoriser Claude à modifier ou intégrer des prix, ajouter dans `env` :
 ```
 
 Exemple : « voici le tarif Schneider 2027 (fichier joint), intègre-le dans NEXUS ». Claude lit le fichier, appelle `nexus_upsert_items` en simulation pour montrer ce qui sera ajouté ou modifié, puis écrit après ton accord. Pour une référence existante, seuls les champs fournis changent ; une nouvelle référence doit avoir au moins un libellé et un prix.
+
+Pour supprimer : « supprime la référence TEST-001 de NEXUS ». Claude montre d'abord la liste de ce qui sera supprimé (simulation), puis supprime après ton accord. Une base supprimée par erreur se restaure depuis la sauvegarde faite juste avant dans `backups/`.
 
 Chaque écriture :
 - prend le verrou admin le temps de l'écriture et **échoue si quelqu'un est admin dans NEXUS** ;
