@@ -26,7 +26,8 @@ declare global {
       checkUpdates: () => Promise<{ status: string; version?: string; message?: string }>
       downloadUpdate: () => Promise<void>
       installUpdate: () => Promise<void>
-      onUpdateEvent: (callback: (data: UpdateEventPayload) => void) => () => void
+      getUpdateState: () => Promise<UpdateState>
+      onUpdateEvent: (callback: (data: UpdateState) => void) => () => void
     }
   }
 
@@ -80,10 +81,13 @@ declare global {
     items: PriceItem[]
   }
 
-  interface UpdateEventPayload {
-    type: 'available' | 'not-available' | 'progress' | 'downloaded' | 'error'
-    info?: { version: string }
-    progress?: { percent: number }
+  interface UpdateState {
+    state: 'idle' | 'checking' | 'up-to-date' | 'available' | 'downloading' | 'downloaded' | 'error'
+    currentVersion: string
+    version?: string
+    releaseDate?: string
+    releaseNotes?: string
+    progress?: { percent: number; transferred?: number; total?: number; bytesPerSecond?: number }
     message?: string
   }
 

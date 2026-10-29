@@ -402,18 +402,63 @@ function sendToMainWindow(channel, payload) {
   }
 }
 
+// Etat courant de la mise a jour, renvoye a la fenetre a chaque changement et a la
+// demande (get-update-state) pour qu'elle ne rate pas un evenement emis avant son chargement.
+let updateState = { state: 'idle', currentVersion: app.getVersion() }
+const UPDATE_CHECK_INTERVAL_MS = 2 * 60 * 60 * 1000
+
+function setUpdateState(patch) {
+  updateState = { ...updateState, ...patch, currentVersion: app.getVersion() }
+  sendToMainWindow('update-event', updateState)
+}
+
+function releaseInfo(info) {
+  return {
+    version: info?.version,
+    releaseDate: info?.releaseDate,
+    releaseNotes: typeof info?.releaseNotes === 'string'
+      ? info.releaseNotes
+      : Array.isArray(info?.releaseNotes) ? info.releaseNotes.map((n) => n.note || '').join('\n') : undefined,
+  }
+}
+
+async function checkForUpdatesSafe() {
+  if (isDev) return
+  // Ne pas relancer une verification pendant ou apres un telechargement
+  if (updateState.state === 'downloading' || updateState.state === 'downloaded') return
+  try {
+    await autoUpdater.checkForUpdates()
+  } catch (err) {
+    logInfo('verification mise a jour impossible', { error: String(err) })
+  }
+}
+
 function wireAutoUpdater() {
   if (isDev) return
   autoUpdater.autoDownload = false
   autoUpdater.autoInstallOnAppQuit = true
-  autoUpdater.on('update-available', (info) => sendToMainWindow('update-event', { type: 'available', info }))
-  autoUpdater.on('update-not-available', () => sendToMainWindow('update-event', { type: 'not-available' }))
-  autoUpdater.on('error', (err) => sendToMainWindow('update-event', { type: 'error', message: err.message }))
-  autoUpdater.on('download-progress', (progress) => sendToMainWindow('update-event', { type: 'progress', progress }))
+  autoUpdater.on('checking-for-update', () => {
+    if (updateState.state === 'idle' || updateState.state === 'error' || updateState.state === 'up-to-date') setUpdateState({ state: 'checking', message: undefined })
+  })
+  autoUpdater.on('update-available', (info) => setUpdateState({ state: 'available', ...releaseInfo(info), message: undefined }))
+  autoUpdater.on('update-not-available', () => setUpdateState({ state: 'up-to-date', message: undefined }))
+  autoUpdater.on('error', (err) => {
+    // Erreur pendant le telechargement : on l'affiche. Sinon (pas de reseau...) : silencieux,
+    // on revient a l'etat precedent et on reessaiera plus tard.
+    const wasDownloading = updateState.state === 'downloading'
+    setUpdateState({ state: wasDownloading ? 'error' : (updateState.version ? 'available' : 'idle'), message: err?.message || String(err) })
+  })
+  autoUpdater.on('download-progress', (p) => setUpdateState({
+    state: 'downloading',
+    progress: { percent: p.percent, transferred: p.transferred, total: p.total, bytesPerSecond: p.bytesPerSecond },
+  }))
   autoUpdater.on('update-downloaded', (info) => {
     updateDownloaded = true
-    sendToMainWindow('update-event', { type: 'downloaded', info })
+    setUpdateState({ state: 'downloaded', ...releaseInfo(info), progress: undefined, message: undefined })
   })
+  // Verification au demarrage puis toutes les 2 h (app laissee ouverte)
+  setTimeout(() => void checkForUpdatesSafe(), 5000)
+  setInterval(() => void checkForUpdatesSafe(), UPDATE_CHECK_INTERVAL_MS)
 }
 
 function createWindow() {
@@ -501,7 +546,10 @@ ipcMain.handle('get-prices-version', () => getPricesVersion())
 ipcMain.handle('backup-prices', () => backupPrices())
 
 ipcMain.handle('check-updates', async () => {
-  if (isDev) return { status: 'dev' }
+  if (isDev) return { status: 'dev', version: app.getVersion() }
+  if (updateState.state === 'downloading' || updateState.state === 'downloaded') {
+    return { status: updateState.state, version: updateState.version }
+  }
   try {
     const result = await autoUpdater.checkForUpdates()
     if (result?.updateInfo?.version && result.updateInfo.version !== app.getVersion()) {
@@ -512,11 +560,21 @@ ipcMain.handle('check-updates', async () => {
     return { status: 'error', message: String(err) }
   }
 })
-ipcMain.handle('download-update', async () => { if (!isDev) await autoUpdater.downloadUpdate() })
+ipcMain.handle('get-update-state', () => updateState)
+ipcMain.handle('download-update', async () => {
+  if (isDev) return
+  setUpdateState({ state: 'downloading', progress: { percent: 0 }, message: undefined })
+  try {
+    await autoUpdater.downloadUpdate()
+  } catch (err) {
+    setUpdateState({ state: 'error', message: err?.message || String(err) })
+  }
+})
 ipcMain.handle('install-update', () => {
   if (isDev) return
   pauseMcpForUpdate()
-  autoUpdater.quitAndInstall()
+  // isSilent=false (installeur visible), isForceRunAfter=true (NEXUS se relance)
+  autoUpdater.quitAndInstall(false, true)
 })
 
 ipcMain.handle('window-close', () => {
@@ -606,7 +664,6 @@ app.whenReady().then(() => {
   // L'app tourne : une eventuelle mise a jour est terminee, le MCP peut redemarrer.
   if (app.isPackaged) clearMcpPause()
   registerClaudeMcp()
-  if (!isDev) autoUpdater.checkForUpdates()
   if (isDev) {
     globalShortcut.register('Control+Shift+I', () => {
       const win = BrowserWindow.getFocusedWindow()
