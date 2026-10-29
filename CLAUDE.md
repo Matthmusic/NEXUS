@@ -16,6 +16,7 @@ npm run build          # TypeScript check + Vite production build
 npm run build:electron # Full Windows NSIS installer (runs build first)
 npm run lint           # ESLint (TypeScript/React files only)
 npm run preview        # Vite preview of production build
+npm run mcp            # Start the MCP stdio server (see MCP.md)
 ```
 
 In dev mode, DevTools can be opened via **Ctrl+Shift+I** or **F12**.
@@ -48,6 +49,10 @@ The app has two tabs: **Calculateur** (default) and **Base de prix**.
 - [src/components/modals/](src/components/modals/): Four modal components — `UserModal`, `ImportModal`, `ConfigModal`, `CablePrixImportModal`. The last one handles Excel-based cable price imports with column auto-detection, a preview diff (updated/added/skipped), and automatic backup before writing.
 
 Reads cable specs from [src/assets/cables.json](src/assets/cables.json) and correlates with the price DB via `SECTION_RE` / `COND_RE` regexes.
+
+### MCP Server
+
+[electron/mcp-server.cjs](electron/mcp-server.cjs) is a standalone stdio MCP server (not loaded by the Electron app) that reads the same data dir as the app (`NEXUS_DATA_DIR` > app `config.json` > default). It duplicates the search settings from `App.tsx` and the cable correlation logic from `CableCalculator.tsx`/`cableData.ts` — keep them in sync. Writes are opt-in (`NEXUS_MCP_ALLOW_WRITE=1`) and go through the same lock file. On startup the packaged app also registers itself in Claude Desktop's `claude_desktop_config.json` (`registerClaudeMcp` in `main.cjs`, only touches `mcpServers.nexus`, opt-out with `mcpAutoRegister: false` in `config.json`). User docs: [MCP.md](MCP.md).
 
 ### Data Files (dev: `./data/`, packaged: `%APPDATA%/nexus-data/`)
 
