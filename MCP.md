@@ -17,11 +17,18 @@ NEXUS inclut un serveur MCP (`electron/mcp-server.cjs`) qui donne à Claude (Cla
 
 ## Branchement dans Claude Desktop
 
-Ouvrir **Paramètres → Développeur → Modifier la config** (`%APPDATA%\Claude\claude_desktop_config.json`) et ajouter :
+### Automatique (NEXUS 0.1.3 et plus)
 
-### Option A — avec NEXUS installé (pas besoin de Node)
+Rien à faire : au lancement, NEXUS s'inscrit tout seul dans la config de Claude Desktop (`%APPDATA%\Claude\claude_desktop_config.json`, ou la version Microsoft Store). Il suffit ensuite de **redémarrer Claude Desktop** une fois.
 
-L'exécutable NEXUS sait se lancer en mode Node grâce à `ELECTRON_RUN_AS_NODE` :
+- Seule l'entrée `nexus` est ajoutée ou mise à jour ; les autres serveurs MCP et réglages restent intacts, et une copie `.bak` est faite avant toute modification.
+- Les variables ajoutées à la main dans `env` (ex. `NEXUS_MCP_ALLOW_WRITE`) sont conservées.
+- Si Claude Desktop n'est pas installé, rien n'est fait.
+- Pour désactiver : ajouter `"mcpAutoRegister": false` dans `%APPDATA%\nexus\config.json`.
+
+### Manuel — avec NEXUS installé (pas besoin de Node)
+
+Ce que fait l'inscription automatique. L'exécutable NEXUS sait se lancer en mode Node grâce à `ELECTRON_RUN_AS_NODE` :
 
 ```json
 {
@@ -35,9 +42,7 @@ L'exécutable NEXUS sait se lancer en mode Node grâce à `ELECTRON_RUN_AS_NODE`
 }
 ```
 
-(Remplacer `<VOUS>` par votre nom d'utilisateur Windows, ou adapter si NEXUS est installé ailleurs.)
-
-### Option B — depuis le code source (Node installé)
+### Manuel — depuis le code source (Node installé)
 
 ```json
 {

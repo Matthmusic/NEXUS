@@ -52,7 +52,7 @@ Reads cable specs from [src/assets/cables.json](src/assets/cables.json) and corr
 
 ### MCP Server
 
-[electron/mcp-server.cjs](electron/mcp-server.cjs) is a standalone stdio MCP server (not loaded by the Electron app) that reads the same data dir as the app (`NEXUS_DATA_DIR` > app `config.json` > default). It duplicates the search settings from `App.tsx` and the cable correlation logic from `CableCalculator.tsx`/`cableData.ts` — keep them in sync. Writes are opt-in (`NEXUS_MCP_ALLOW_WRITE=1`) and go through the same lock file. User docs: [MCP.md](MCP.md).
+[electron/mcp-server.cjs](electron/mcp-server.cjs) is a standalone stdio MCP server (not loaded by the Electron app) that reads the same data dir as the app (`NEXUS_DATA_DIR` > app `config.json` > default). It duplicates the search settings from `App.tsx` and the cable correlation logic from `CableCalculator.tsx`/`cableData.ts` — keep them in sync. Writes are opt-in (`NEXUS_MCP_ALLOW_WRITE=1`) and go through the same lock file. On startup the packaged app also registers itself in Claude Desktop's `claude_desktop_config.json` (`registerClaudeMcp` in `main.cjs`, only touches `mcpServers.nexus`, opt-out with `mcpAutoRegister: false` in `config.json`). User docs: [MCP.md](MCP.md).
 
 ### Data Files (dev: `./data/`, packaged: `%APPDATA%/nexus-data/`)
 

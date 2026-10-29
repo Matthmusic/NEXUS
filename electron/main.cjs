@@ -529,11 +529,60 @@ ipcMain.handle('window-toggle-maximize', () => {
   }
 })
 
+// Inscrit le serveur MCP de NEXUS dans Claude Desktop (si Claude Desktop est installe).
+// Ne touche qu'a la cle mcpServers.nexus et garde les reglages ajoutes a la main (env).
+// Desactivable avec "mcpAutoRegister": false dans config.json.
+function claudeDesktopConfigDirs() {
+  const dirs = []
+  const appData = process.env.APPDATA
+  if (appData) dirs.push(path.join(appData, 'Claude'))
+  // Version Microsoft Store (MSIX) : config virtualisee dans le dossier du package
+  const localAppData = process.env.LOCALAPPDATA
+  if (localAppData) {
+    const pkgRoot = path.join(localAppData, 'Packages')
+    try {
+      for (const name of fs.readdirSync(pkgRoot)) {
+        if (/^Claude_/i.test(name)) dirs.push(path.join(pkgRoot, name, 'LocalCache', 'Roaming', 'Claude'))
+      }
+    } catch { /* pas de dossier Packages */ }
+  }
+  return dirs.filter((dir) => fs.existsSync(dir))
+}
+
+function registerClaudeMcp() {
+  if (!app.isPackaged || process.platform !== 'win32') return
+  if (loadConfig().mcpAutoRegister === false) return
+  const scriptPath = path.join(process.resourcesPath, 'app.asar', 'electron', 'mcp-server.cjs')
+  for (const dir of claudeDesktopConfigDirs()) {
+    const file = path.join(dir, 'claude_desktop_config.json')
+    try {
+      const raw = fs.existsSync(file) ? fs.readFileSync(file, 'utf-8').replace(/^﻿/, '') : ''
+      const cfg = raw.trim() ? JSON.parse(raw) : {}
+      const prev = (cfg.mcpServers && cfg.mcpServers.nexus) || {}
+      const next = {
+        ...prev,
+        command: process.execPath,
+        args: [scriptPath],
+        env: { ...(prev.env || {}), ELECTRON_RUN_AS_NODE: '1' },
+      }
+      if (JSON.stringify(prev) === JSON.stringify(next)) continue
+      if (raw) fs.copyFileSync(file, `${file}.bak`)
+      cfg.mcpServers = { ...(cfg.mcpServers || {}), nexus: next }
+      fs.writeFileSync(file, JSON.stringify(cfg, null, 2))
+      logInfo('MCP inscrit dans Claude Desktop', { file })
+    } catch (error) {
+      // Fichier illisible (JSON invalide...) : on ne l'ecrase pas
+      logInfo('inscription MCP impossible', { file, error: error.message })
+    }
+  }
+}
+
 app.whenReady().then(() => {
   Menu.setApplicationMenu(null)
   createSplash()
   createWindow()
   wireAutoUpdater()
+  registerClaudeMcp()
   if (!isDev) autoUpdater.checkForUpdates()
   if (isDev) {
     globalShortcut.register('Control+Shift+I', () => {

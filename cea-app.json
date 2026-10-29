@@ -2,7 +2,7 @@
   "app": {
     "id": "nexus",
     "name": "NEXUS",
-    "version": "0.1.2",
+    "version": "0.1.3",
     "description": {
       "short": "Base de prix par références électriques",
       "long": "NEXUS est une application Windows de gestion d'une base de prix de composants électriques. Elle offre une recherche floue (fuzzy search) sur les références, un calculateur de coût de câbles avec export devis, et un système de verrouillage multi-utilisateur pour l'édition de la base de données."
@@ -48,11 +48,18 @@
   },
   "installation": {
     "type": "installer",
-    "downloadUrl": "https://github.com/Matthmusic/NEXUS/releases/latest/download/NEXUS-0.1.2-Setup.exe",
-    "installCommand": "NEXUS-0.1.2-Setup.exe /SILENT",
+    "downloadUrl": "https://github.com/Matthmusic/NEXUS/releases/latest/download/NEXUS-0.1.3-Setup.exe",
+    "installCommand": "NEXUS-0.1.3-Setup.exe /SILENT",
     "uninstallCommand": "uninstall.exe /SILENT"
   },
   "changelog": {
+    "0.1.3": {
+      "date": "2026-10-29",
+      "changes": [
+        "Serveur MCP : Claude peut chercher dans la base de prix, chiffrer des câbles et intégrer des tarifs",
+        "Inscription automatique du serveur MCP dans Claude Desktop au lancement"
+      ]
+    },
     "0.1.2": {
       "date": "2026-05-20",
       "changes": [
