@@ -390,6 +390,32 @@ function upsertItems(entries, dryRun) {
   })
 }
 
+const MAX_DELETE = 50
+
+// Supprime des references. Les refs introuvables sont signalees, pas d'erreur.
+function deleteItems(refs, dryRun) {
+  const plan = (items) => {
+    const wanted = new Set(refs.map((r) => String(r).trim().toLowerCase()).filter(Boolean))
+    const deleted = items.filter((item) => wanted.has(String(item.ref).toLowerCase()))
+    const found = new Set(deleted.map((item) => String(item.ref).toLowerCase()))
+    const notFound = [...new Set(refs.map((r) => String(r).trim()))].filter((r) => r && !found.has(r.toLowerCase()))
+    const kept = items.filter((item) => !wanted.has(String(item.ref).toLowerCase()))
+    return { kept, report: { deleted: deleted.map((i) => ({ ref: i.ref, name: i.name, price: i.price, category: i.category, supplier: i.supplier })), notFound } }
+  }
+  if (dryRun) {
+    const { db } = loadDb()
+    return { dryRun: true, ...plan(db.items).report }
+  }
+  return writeDb((db, now) => {
+    const { kept, report } = plan(db.items)
+    db.items = kept
+    if (report.deleted.length) {
+      appendAdminLog({ timestamp: now, action: 'delete', user: MCP_USER, machine: os.hostname(), via: 'mcp', refs: report.deleted.map((i) => i.ref) })
+    }
+    return { dryRun: false, ...report }
+  })
+}
+
 // ---------------------------------------------------------------------------
 // Serveur MCP
 // ---------------------------------------------------------------------------
@@ -604,6 +630,20 @@ if (ALLOW_WRITE) {
       updated: res.updated.slice(0, 100),
       unchanged: res.unchanged.slice(0, 100),
     })
+  }))
+  server.registerTool('nexus_delete_items', {
+    title: 'Supprimer des references',
+    description: `Supprime des references de la base (${MAX_DELETE} max par appel). `
+      + 'Toujours appeler d\'abord avec dryRun=true et montrer la liste a l\'utilisateur, puis relancer avec dryRun=false seulement apres son accord explicite. '
+      + `Prend le verrou admin le temps de l'ecriture, sauvegarde la base avant (restaurable depuis backups/), trace la suppression dans admin.log. Auteur : "${MCP_USER}".`,
+    inputSchema: {
+      refs: z.array(z.string().min(1)).min(1).max(MAX_DELETE).describe('References exactes a supprimer'),
+      dryRun: z.boolean().optional().describe('true = simulation sans ecrire (defaut false)'),
+    },
+    annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true },
+  }, safe(({ refs, dryRun }) => {
+    const res = deleteItems(refs, !!dryRun)
+    return ok({ dryRun: res.dryRun, counts: { deleted: res.deleted.length, notFound: res.notFound.length }, deleted: res.deleted, notFound: res.notFound })
   }))
 }
 
