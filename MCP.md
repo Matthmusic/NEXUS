@@ -16,6 +16,43 @@ NEXUS inclut un serveur MCP (`electron/mcp-server.cjs`) qui donne à Claude (Cla
 | `nexus_upsert_items` | *(optionnel)* Intègre des prix en masse : ajoute les nouvelles références, met à jour les existantes, avec mode simulation (`dryRun`) |
 | `nexus_delete_items` | *(optionnel)* Supprime des références (50 max par appel), avec mode simulation (`dryRun`) |
 
+## Module NF C 15-100 (outils `nexus_nfc_*`)
+
+Outils en lecture seule pour dimensionner les canalisations BT selon la NF C 15-100. Les calculs sont faits par le serveur ; chaque réponse donne le résultat, les étapes du calcul, les références (tableau, page de la source, édition), les avertissements et l'état de vérification des données utilisées.
+
+| Outil | Rôle |
+|---|---|
+| `nexus_nfc_section_minimale` | Section minimale selon IB, la protection, le mode de pose, la température, le groupement, les câbles en parallèle, le neutre chargé, BE3. Renvoie aussi `pour_chiffrage`, à passer à `nexus_cable_price` |
+| `nexus_nfc_courant_admissible` | Iz corrigé d'une section dans des conditions de pose données |
+| `nexus_nfc_facteurs_correction` | Facteur global K et son détail |
+| `nexus_nfc_chute_tension` | Chute de tension (formule UTE C 15-105), cumul amont, limite, contrôle par le tableau V/A/km, démarrage moteur |
+| `nexus_nfc_longueur_max` | Longueur maximale pour une chute de tension admissible |
+| `nexus_nfc_section_neutre` | Règle de section du neutre selon les harmoniques |
+| `nexus_nfc_mode_pose` | Trouve le mode de pose et la méthode de référence à partir d'une description |
+| `nexus_nfc_tableau` | Consultation brute d'un tableau (pour vérifier une valeur) |
+| `nexus_nfc_transformateur` | Caractéristiques d'un transformateur HTA/BT |
+| `nexus_nfc_a_propos` | Jeu de données actif, sources, taux de vérification |
+
+### Données
+
+Les valeurs normatives **ne sont pas dans ce dépôt** (dépôt public, tableaux soumis à la licence AFNOR). Elles sont lues dans `<dossier de données>\nfc15100\` (ou `NEXUS_NFC_DIR`) :
+
+```
+nfc15100\
+  actif.json                 jeu utilisé par défaut, ex. { "jeu": "2024.1" }
+  jeux\2024.1\manifest.json  sommes SHA-256 de chaque fichier
+  jeux\2024.1\*.json         tableaux, facteurs, règles
+```
+
+Un jeu publié est figé : un fichier modifié à la main est refusé par le serveur. Pour corriger, copier le jeu sous un nouveau nom (`2024.2`), corriger, puis :
+
+```bash
+node scripts/nfc15100/controler.cjs "Z:\F - UTILITAIRES\NEXUS\nfc15100\jeux\2024.2" rapport.md
+node scripts/nfc15100/publier.cjs "Z:\F - UTILITAIRES\NEXUS\nfc15100" 2024.2 --actif --auteur "Nom"
+```
+
+Sans dossier `nfc15100`, les outils répondent simplement que le module n'est pas installé ; le reste de NEXUS fonctionne normalement.
+
 ## Branchement dans Claude Desktop
 
 ### Automatique (NEXUS 0.1.3 et plus)

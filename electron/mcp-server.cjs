@@ -24,6 +24,7 @@ const FuseModule = require('fuse.js')
 const { McpServer } = require('@modelcontextprotocol/sdk/server/mcp.js')
 const { StdioServerTransport } = require('@modelcontextprotocol/sdk/server/stdio.js')
 const { z } = require('zod')
+const nfc15100 = require('./nfc15100/index.cjs')
 
 const Fuse = FuseModule.default || FuseModule
 const pkg = require('../package.json')
@@ -495,7 +496,8 @@ const server = new McpServer(
     instructions:
       'NEXUS : base de prix HT (EUR) de composants electriques. '
       + 'Utiliser nexus_search pour trouver une reference (recherche floue sur ref, libelle, mots-cles, categorie, fournisseur), '
-      + 'nexus_get_item pour le detail et l\'historique, nexus_cable_price pour chiffrer un cable (materiel x marge + temps de pose x taux horaire).',
+      + 'nexus_get_item pour le detail et l\'historique, nexus_cable_price pour chiffrer un cable (materiel x marge + temps de pose x taux horaire). '
+      + nfc15100.INSTRUCTIONS,
   },
 )
 
@@ -682,6 +684,9 @@ server.registerTool('nexus_cable_price', {
     note: complete ? undefined : 'Temps de pose inconnu pour une section : seul le materiel est chiffre pour celle-ci.',
   })
 }))
+
+// Module NF C 15-100 (lecture seule, donnees dans <dataDir>/nfc15100)
+nfc15100.registerNfcTools(server, { getDataDir: () => paths.dir, log })
 
 if (ALLOW_WRITE) {
   server.registerTool('nexus_update_price', {
