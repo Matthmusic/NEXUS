@@ -219,7 +219,8 @@ function groupement(d, m, p, g, n, trace) {
           'Disposition sur chemin de cables non precisee : cables jointifs retenus (cote defavorable).')
         return coefficient(d, '52.13', { disposition: dispo, nb_tablettes: tablettes }, n, trace, 'K groupement')
       }
-      const forme = p.disposition === 'trefle' ? 'trefle' : 'nappe'
+      // meme disposition par defaut que colonneIz : trefle en 3 conducteurs charges (Iz le plus faible)
+      const forme = p.disposition || (nbConducteurs(p.systeme) === 3 ? 'trefle' : 'nappe')
       const dispo = disp || `${pose === 32 || pose === 34 ? 'echelle_corbeaux' : 'tablette_perforee_horizontale'}_${forme}`
       return coefficient(d, '52.14', { disposition: dispo, nb_tablettes: tablettes }, n, trace, 'K groupement')
     }

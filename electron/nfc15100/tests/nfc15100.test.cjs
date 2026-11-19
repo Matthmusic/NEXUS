@@ -32,6 +32,7 @@ function jeuFictif() {
         { methode: 'B1', tableau_iz: 'T-B1', type_cable: 'monoconducteurs_ou_conducteurs', milieu: 'air', temperature_reference_c: 30, modes_pose: [4, 40], description: 'conduit apparent', verif: V },
         { methode: 'B2', tableau_iz: 'T-B2', type_cable: 'multiconducteur', milieu: 'air', temperature_reference_c: 30, modes_pose: [5, 40], description: 'conduit apparent multi', verif: V },
         { methode: 'E', tableau_iz: 'T-E', type_cable: 'multiconducteur', milieu: 'air', temperature_reference_c: 30, modes_pose: [31], description: 'chemin perfore', verif: V },
+        { methode: 'F', tableau_iz: 'T-F', type_cable: 'monoconducteurs', milieu: 'air', temperature_reference_c: 30, modes_pose: [31], description: 'chemin perfore mono', verif: V },
         { methode: 'D2', tableau_iz: 'T-D2', type_cable: 'tous', milieu: 'sol', temperature_reference_c: 20, modes_pose: [72], description: 'enterre', verif: 'non_verifie' },
       ],
     },
@@ -40,6 +41,7 @@ function jeuFictif() {
         { tableau: 'T-B1', methode: 'B1', ...B, lignes: izLignes(50) },
         { tableau: 'T-B2', methode: 'B2', ...B, lignes: izLignes(45) },
         { tableau: 'T-E', methode: 'E', ...B, lignes: izLignes(60) },
+        { tableau: 'T-F', methode: 'F', ...B, lignes: izLignes(70).map((l) => (l.nb_conducteurs_charges === 3 ? { ...l, disposition: 'trefle' } : l)) },
         { tableau: 'T-D2', methode: 'D2', ...B, lignes: izLignes(55).map((l) => ({ ...l, verif: 'non_verifie' })) },
       ],
     },
@@ -51,6 +53,9 @@ function jeuFictif() {
         { tableau: '52.11', grandeur: 'resistivite_sol', ...B, lignes: [{ disposition: 'direct_sol', valeur: 1, coefficient: 1.5, verif: V }, { disposition: 'direct_sol', valeur: 2.5, coefficient: 1, verif: V }] },
         { tableau: '52.12', grandeur: 'nb_circuits', ...B, regle_au_dela: {}, lignes: [1, 2, 3, 4].map((n) => ({ disposition: 'groupes_air_surface_noyes', valeur: n, coefficient: 1 - 0.1 * (n - 1), verif: V })) },
         { tableau: '52.13', grandeur: 'nb_cables', ...B, lignes: [1, 2, 3].map((n) => ({ disposition: 'tablette_perforee_horizontale_jointifs', nb_tablettes: 1, valeur: n, coefficient: 1 - 0.05 * (n - 1), verif: V })) },
+        { tableau: '52.14', grandeur: 'nb_circuits', ...B, lignes: [
+          { disposition: 'tablette_perforee_horizontale_trefle', nb_tablettes: 1, valeur: 1, coefficient: 0.95, verif: V },
+          { disposition: 'tablette_perforee_horizontale_nappe', nb_tablettes: 1, valeur: 1, coefficient: 0.9, verif: V }] },
         { tableau: '52.15', grandeur: 'nb_couches', ...B, regle_au_dela: { toutes: 'constant' }, lignes: [{ disposition: 'toutes', valeur: 1, coefficient: 1, verif: V }, { disposition: 'toutes', valeur: 2, coefficient: 0.8, verif: V }] },
         { tableau: '52.16', grandeur: 'nb_circuits', ...B, lignes: [{ disposition: 'jointifs', valeur: 2, coefficient: 0.7, verif: V }, { disposition: 'jointifs', valeur: 3, coefficient: 0.6, verif: V }] },
       ],
@@ -183,7 +188,7 @@ test('cables en parallele : Iz requis divise, composition pour nexus_cable_price
 })
 
 test('tolerance 5 % refusee pour une pose exclue', () => {
-  const { rep } = calc(iz.sectionMinimale, { ...base, courant_emploi_a: 20, mode_pose: 31, tolerance_5pct: true })
+  const { rep } = calc(iz.sectionMinimale, { ...base, courant_emploi_a: 20, mode_pose: 31, type_cable: 'multiconducteur', tolerance_5pct: true })
   assert.ok(rep.avertissements.some((a) => a.includes('Tolerance de 5 % refusee')))
 })
 
@@ -233,4 +238,11 @@ test('donnees : jeu inconnu et nom invalide', () => {
   const ctx = installer()
   assert.throws(() => ctx.store.charger('2099.9'), /introuvable/)
   assert.throws(() => ctx.store.charger('../x'), /invalide/)
+})
+
+test('methode F : meme disposition par defaut pour Iz et pour le groupement', () => {
+  const { r, rep } = calc(iz.courantAdmissible, { ...base, section_mm2: 10, mode_pose: 31, type_cable: 'monoconducteurs' })
+  assert.equal(r.methode, 'F')
+  assert.equal(r.facteurs.groupement, 0.95) // 52.14 trefle, comme la colonne Iz
+  assert.ok(rep.calcul.some((e) => e.includes('tablette_perforee_horizontale_trefle')))
 })
