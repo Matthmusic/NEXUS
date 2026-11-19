@@ -137,7 +137,8 @@ test('facteurs : temperature entre deux lignes -> ligne superieure (defavorable)
   assert.equal(r.facteurs.temperature, 0.9) // 35 °C -> ligne 40 °C
   assert.equal(r.facteurs.groupement, 0.9)
   assert.equal(r.k_total, 0.81)
-  assert.equal(r.section_phase_mm2, 16) // 40 / 0,81 = 49,4 A ; 10 mm² = 50 x 0,81 = 40,5 -> insuffisant
+  assert.equal(r.section_phase_mm2, 10) // Iz requis = 40 / 0,81 = 49,4 A <= 50 A ; Iz corrige 40,5 A >= 40 A
+  assert.ok(r.iz_corrige_a >= 40)
   assert.ok(rep.calcul.some((e) => e.includes('cote defavorable')))
 })
 
@@ -245,4 +246,15 @@ test('methode F : meme disposition par defaut pour Iz et pour le groupement', ()
   assert.equal(r.methode, 'F')
   assert.equal(r.facteurs.groupement, 0.95) // 52.14 trefle, comme la colonne Iz
   assert.ok(rep.calcul.some((e) => e.includes('tablette_perforee_horizontale_trefle')))
+})
+
+test('section minimale : le facteur K n\'est applique qu\'une fois (Iz corrige >= courant de protection)', () => {
+  for (const p of [
+    { ...base, courant_emploi_a: 60, mode_pose: 72, resistivite_sol: 1, protection: { type: 'disjoncteur', calibre_a: 95 } },
+    { ...base, courant_emploi_a: 40, mode_pose: 4, temperature_c: 50, groupement: { nb_circuits: 3 } },
+  ]) {
+    const { r } = calc(iz.sectionMinimale, p)
+    assert.ok(r.iz_corrige_a >= r.protection.courant_a, `Iz corrige ${r.iz_corrige_a} < ${r.protection.courant_a}`)
+    if (r.sections_voisines.inferieure) assert.ok(r.sections_voisines.inferieure.iz_corrige_a < r.protection.courant_a)
+  }
 })

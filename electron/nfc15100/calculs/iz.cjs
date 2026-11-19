@@ -369,20 +369,21 @@ function sectionMinimale(d, p, trace) {
     }
   }
 
-  const idx = col.lignes.findIndex((l) => l.iz_a * k * tolerance >= izRequis)
+  // Condition : Iz tableau (x tolerance eventuelle) >= Iz requis = I / K, soit Iz corrige = Iz tableau x K >= I.
+  const idx = col.lignes.findIndex((l) => l.iz_a * tolerance >= izRequis)
   if (idx < 0) {
     const max = col.lignes.at(-1)
-    throw new ErreurCalcul(`Aucune section du tableau ${col.bloc.tableau} ne suffit : la plus grande (${fr(max.section_mm2)} mm², Iz corrige ${fr(max.iz_a * k, 1)} A) reste sous ${fr(izRequis, 1)} A. Envisager des cables en parallele (cables_paralleles_par_phase) ou une canalisation prefabriquee.`)
+    throw new ErreurCalcul(`Aucune section du tableau ${col.bloc.tableau} ne suffit : la plus grande (${fr(max.section_mm2)} mm², Iz tableau ${fr(max.iz_a)} A) reste sous l'Iz requis de ${fr(izRequis, 1)} A. Envisager des cables en parallele (cables_paralleles_par_phase) ou une canalisation prefabriquee.`)
   }
   const retenue = col.lignes[idx]
   trace.utilise(col.bloc, retenue, `${col.bloc.tableau} ${p.materiau} ${p.isolant}${col.n} ${fr(retenue.section_mm2)} mm² = ${fr(retenue.iz_a)} A`)
-  trace.etape(`Section retenue ${fr(retenue.section_mm2)} mm² : Iz tableau ${fr(retenue.iz_a)} A x K ${fr(k, 4)} = ${fr(retenue.iz_a * k, 1)} A >= ${fr(izRequis, 1)} A`)
+  trace.etape(`Section retenue ${fr(retenue.section_mm2)} mm² : Iz tableau ${fr(retenue.iz_a)} A >= Iz requis ${fr(izRequis, 1)} A (Iz corrige ${fr(retenue.iz_a * k, 1)} A >= ${fr(prot.courant_a / par, 1)} A par cable)`)
 
   const voisines = {}
   if (idx > 0) {
     const inf = col.lignes[idx - 1]
     trace.utilise(col.bloc, inf, `${col.bloc.tableau} ${fr(inf.section_mm2)} mm² = ${fr(inf.iz_a)} A`)
-    voisines.inferieure = { section_mm2: inf.section_mm2, iz_corrige_a: round(inf.iz_a * k), insuffisante_de_a: round(izRequis - inf.iz_a * k * tolerance) }
+    voisines.inferieure = { section_mm2: inf.section_mm2, iz_corrige_a: round(inf.iz_a * k), insuffisante_de_a: round(prot.courant_a / par - inf.iz_a * k * tolerance) }
   }
   if (idx < col.lignes.length - 1) {
     const sup = col.lignes[idx + 1]
